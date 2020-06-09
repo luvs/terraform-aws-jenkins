@@ -117,10 +117,11 @@ module "td" {
     }
     secretOptions = null
   }
-  volumes = [{
+  volume = [{
     name      = "jenkins_efs"
     host_path = null
     docker_volume_configuration = null
+
     efs_volume_configuration = [{
       file_system_id = aws_efs_file_system.jenkins_data.id
       root_directory = "/var/jenkins_home"

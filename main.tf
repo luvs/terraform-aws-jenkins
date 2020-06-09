@@ -119,7 +119,7 @@ module "td" {
   }
   volumes = [{
     name      = "jenkins_efs"
-    host_path = null
+    host_path = "/var/jenkins_home"
     docker_volume_configuration = []
 
     efs_volume_configuration = [{

@@ -93,13 +93,88 @@ resource "aws_efs_mount_target" "jenkins_data_mount_targets" {
   security_groups = [ aws_security_group.jenkins_data_allow_nfs_access.id ]
 }
 
+resource "aws_efs_access_point" "jenkins_data_access_point" {
+  file_system_id = aws_efs_file_system.jenkins_data.id
+  posix_user {
+    gid = 1000
+    uid = 1000
+  }
+  root_directory { 
+    path = "/var/jenkins_home"
+    creation_info {
+      owner_gid = 1000
+      owner_uid = 1000
+      permissions = 755
+    }
+  }
+}
+
+#------------------------------------------------------------------------------
+# Role for EFS
+#------------------------------------------------------------------------------
+resource "aws_iam_role" "ecs_task_role" {
+  name = "ecs-task-exec-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_role_assume_policy.json
+
+  tags = {
+    Terraform = "true"
+  }
+}
+
+data "aws_iam_policy_document" "ecs_task_role_assume_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_policy" "ecs_task_exec_policy" {
+  name        = "ecs-task-exec-policy"
+  policy      = data.aws_iam_policy_document.ecs_task_exec_policy_document.json
+}
+
+data "aws_iam_policy_document" "ecs_task_exec_policy_document" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "elasticfilesystem:ClientMount",
+      "elasticfilesystem:ClientWrite"
+    ]
+
+    resources = [
+      aws_efs_file_system.jenkins_data.arn
+    ]
+
+    condition {
+      test     = "StringLike"
+      variable = "elasticfilesystem:AccessPointArn"
+
+      values = [
+        aws_efs_access_point.jenkins_data_access_point.arn
+      ]
+    }
+  }
+}
+
+resource "aws_iam_policy_attachment" "ecs_task_exec_policy_attachment" {
+  name       = "ecs-task-exec-policy-attachment"
+  roles      = [aws_iam_role.ecs_task_role.name]
+  policy_arn = aws_iam_policy.ecs_task_exec_policy.arn
+}
+
+
 #------------------------------------------------------------------------------
 # ECS Task Definition
 #------------------------------------------------------------------------------
 module "td" {
   source  = "cn-terraform/ecs-fargate-task-definition/aws"
-  version = "1.0.11"
-  # source  = "../terraform-aws-ecs-fargate-task-definition"
+  version = "1.0.12"
+  #source  = "../terraform-aws-ecs-fargate-task-definition"
 
   name_preffix      = "${var.name_preffix}-jenkins"
   container_name    = local.container_name
@@ -108,6 +183,9 @@ module "td" {
   container_memory  = 4096 # 4 GB  - https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html#fargate-task-defs
   port_mappings     = local.td_port_mappings
   healthcheck       = local.healthcheck
+  task_role_arn     = aws_iam_role.ecs_task_role.arn
+  start_timeout     = 120
+  stop_timeout      = 120
   log_configuration = {
     logDriver = "awslogs"
     options = {
@@ -119,7 +197,7 @@ module "td" {
   }
   volumes = [{
     name      = "jenkins_efs"
-    host_path = "/var/jenkins_home"
+    host_path = null
     docker_volume_configuration = []
 
     efs_volume_configuration = [{
@@ -127,6 +205,7 @@ module "td" {
       root_directory = "/var/jenkins_home"
     }]
   }]
+
   mount_points = [
     {
       sourceVolume  = "jenkins_efs"
@@ -149,6 +228,8 @@ module "ecs-alb" {
   public_subnets  = var.public_subnets_ids
   http_ports      = local.service_http_ports
   https_ports     = local.service_https_ports
+
+  target_group_health_check_unhealthy_threshold = 10
 }
 
 #------------------------------------------------------------------------------

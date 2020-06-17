@@ -187,7 +187,7 @@ module "td" {
   start_timeout     = 120
   stop_timeout      = 120
   environment = [
-    "JAVA_OPTS" = "-Djenkins.ec2.bootstrapAuthSleepMs=120000"
+    {"JAVA_OPTS" = "-Djenkins.ec2.bootstrapAuthSleepMs=120000"}
   ]
   log_configuration = {
     logDriver = "awslogs"

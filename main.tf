@@ -113,7 +113,7 @@ resource "aws_efs_access_point" "jenkins_data_access_point" {
 # Role for EFS
 #------------------------------------------------------------------------------
 resource "aws_iam_role" "ecs_task_role" {
-  name = "ecs-task-exec-role"
+  name = "${var.name_preffix}-ecs-task-exec-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_role_assume_policy.json
 
   tags = {
@@ -133,7 +133,7 @@ data "aws_iam_policy_document" "ecs_task_role_assume_policy" {
 }
 
 resource "aws_iam_policy" "ecs_task_exec_policy" {
-  name        = "ecs-task-exec-policy"
+  name        = "${var.name_preffix}-ecs-task-exec-policy"
   policy      = data.aws_iam_policy_document.ecs_task_exec_policy_document.json
 }
 
@@ -162,7 +162,7 @@ data "aws_iam_policy_document" "ecs_task_exec_policy_document" {
 }
 
 resource "aws_iam_policy_attachment" "ecs_task_exec_policy_attachment" {
-  name       = "ecs-task-exec-policy-attachment"
+  name       = "${var.name_preffix}-ecs-task-exec-policy-attachment"
   roles      = [aws_iam_role.ecs_task_role.name]
   policy_arn = aws_iam_policy.ecs_task_exec_policy.arn
 }

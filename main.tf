@@ -186,6 +186,9 @@ module "td" {
   task_role_arn     = aws_iam_role.ecs_task_role.arn
   start_timeout     = 120
   stop_timeout      = 120
+  environment = [
+    "JAVA_OPTS" = "-Djenkins.ec2.bootstrapAuthSleepMs=120000"
+  ]
   log_configuration = {
     logDriver = "awslogs"
     options = {

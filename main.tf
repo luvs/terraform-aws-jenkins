@@ -33,8 +33,8 @@ locals {
       protocol      = "tcp"
     }
   ]
-  service_http_ports  = [ 8080, 50000 ]
-  service_https_ports = []
+  service_http_ports  = [8080, 50000]
+  service_https_ports = [443]
 }
 
 #------------------------------------------------------------------------------
@@ -57,6 +57,7 @@ resource "aws_efs_file_system" "jenkins_data" {
     Name = "${var.name_preffix}-jenkins-efs"
   }
 }
+
 resource "aws_security_group" "jenkins_data_allow_nfs_access" {
   name        = "${var.name_preffix}-jenkins-efs-allow-nfs"
   description = "Allow NFS inbound traffic to EFS"
@@ -159,6 +160,51 @@ data "aws_iam_policy_document" "ecs_task_exec_policy_document" {
       ]
     }
   }
+
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:ListSecrets"
+    ]
+
+    resources = ["*"]
+  }
+
+
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "ec2:CancelSpotFleetRequests",
+      "ec2:CancelSpotInstanceRequests",
+      "ec2:CreateTags",
+      "ec2:DeleteTags",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeKeyPairs",
+      "ec2:DescribeRegions",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSpotInstanceRequests",
+      "ec2:DescribeSpotPriceHistory",
+      "ec2:DescribeSubnets",
+      "ec2:GetConsoleOutput",
+      "ec2:GetPasswordData",
+      "ec2:RequestSpotInstances",
+      "ec2:RunInstances",
+      "ec2:Region",
+      "ec2:ResourceTag",
+      "ec2:StartInstances",
+      "ec2:StopInstances",
+      "ec2:TerminateInstances",
+      "iam:ListInstanceProfilesForRole",
+      "iam:PassRole"
+    ]
+
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy_attachment" "ecs_task_exec_policy_attachment" {
@@ -186,6 +232,7 @@ module "td" {
   task_role_arn     = aws_iam_role.ecs_task_role.arn
   start_timeout     = 120
   stop_timeout      = 120
+  command           = ["--sessionTimeout=180"]
   environment = [{
     name  = "JAVA_OPTS",
     value = "-Djenkins.ec2.bootstrapAuthSleepMs=120000"}
@@ -259,4 +306,31 @@ module ecs-fargate-service {
   lb_http_listeners_arns            = module.ecs-alb.lb_http_listeners_arns
   lb_https_listeners_arns           = module.ecs-alb.lb_https_listeners_arns
   load_balancer_sg_id               = module.ecs-alb.aws_security_group_lb_access_sg_id
+}
+
+#------------------------------------------------------------------------------
+# SG for agents
+#------------------------------------------------------------------------------
+resource "aws_security_group" "jenkins_agents_allow_ssh_access" {
+  name        = "${var.name_preffix}-jenkins-agents-allow-ssh"
+  description = "Allow SSH inbound traffic to agents"
+  vpc_id      = var.vpc_id
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name = "${var.name_preffix}-jenkins-agents-allow-ssh"
+  }
+}
+
+resource "aws_security_group_rule" "jenkins_agents_allow_ssh_access_rule" {
+  security_group_id        = aws_security_group.jenkins_agents_allow_ssh_access.id
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = module.ecs-fargate-service.ecs_tasks_sg_id
 }
